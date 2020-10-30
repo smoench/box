@@ -12,23 +12,35 @@ jobs:
         runs-on: ubuntu-latest
         name: Build and test
         strategy:
+            fail-fast: false
             matrix:
-                php: [ "7.2", "7.4" ]
+                php: [ "7.3" ]
                 composer-version: [ "1" ]
                 coverage: [ "none" ]
                 publish-phar: [ false ]
+                phar-readonly: [ false ]
                 git-fetch-depth: [ 1 ]
+                dependencies: [ "locked" ]
                 include:
+                    -   php: "7.2"
+                        composer-version: "1"
+                        git-fetch-depth: 1
+                        dependencies: "lowest"
                     -   php: "7.3"
+                        composer-version: "1"
+                        phar-readonly: true
+                        git-fetch-depth: 1
+                        dependencies: "locked"
+                    -   php: "7.4"
                         composer-version: "1"
                         coverage: "pcov"
                         publish-phar: true
                         git-fetch-depth: 0 # box/composer needs history to determine a recent git version
+                        dependencies: "locked"
                     -   php: "7.4"
                         composer-version: "2"
-                        coverage: "none"
-                        publish-phar: false
                         git-fetch-depth: 1
+                        dependencies: "locked"
 
         steps:
             -   uses: actions/checkout@v2
@@ -54,43 +66,38 @@ jobs:
                     key: ${{ runner.os }}-composer-cache-${{ hashFiles('**/composer.lock') }}
                     restore-keys: ${{ runner.os }}-composer-cache-
 
-            -   name: Set composer root version
-                run: |
-                    source .composer-root-version
-                    echo "COMPOSER_ROOT_VERSION=${COMPOSER_ROOT_VERSION}" >> $GITHUB_ENV
+            -   name: "Install lowest dependencies"
+                if: matrix.dependencies == 'lowest'
+                run: composer update --prefer-lowest --no-interaction --no-progress --no-suggest --prefer-dist
 
-            -   name: Install dependencies
+            -   name: "Install locked dependencies"
+                if: matrix.dependencies == 'locked'
                 run: composer install --no-interaction --no-progress --no-suggest --prefer-dist
 
-            -   name: Run check-composer-root-version
-                run: make check-composer-root-version
+            -   name: Install requirement-checker dependencies
+                run: composer install --no-interaction --no-progress --no-suggest --prefer-dist --working-dir requirement-checker
+
+            -   name: validate box config
+                run: bin/box validate
 
             -   name: Run tests (coverage)
                 if: matrix.coverage == 'pcov'
-                run: make tc
+                run: make tm
 
-            -   name: install tree
-                if: matrix.publish-phar == true
-                run: sudo apt-get install -y tree
-
-            -   name: Run tests (e2e)
-                if: matrix.publish-phar == true
-                run: make e2e
+            -   name: Run tests (phar readonly)
+                if: matrix.phar-readonly == true
+                run: make tu_box_phar_readonly
 
             -   name: Run tests
-                if: matrix.publish-phar == false
-                run: make tu
-
-            -   name: Run phpstan
-                if: matrix.publish-phar == false
-                run: make phpstan
+                if: matrix.coverage != 'pcov' && matrix.phar-readonly != true
+                run: make test
 
             -   uses: actions/upload-artifact@v1
                 name: Publish the PHAR
                 if: matrix.publish-phar == true
                 with:
-                    name: php-scoper.phar
-                    path: bin/php-scoper.phar
+                    name: box.phar
+                    path: bin/box.phar
 
     publish-phar:
         runs-on: ubuntu-latest
@@ -100,15 +107,15 @@ jobs:
         steps:
             -   uses: actions/download-artifact@v1
                 with:
-                    name: php-scoper.phar
+                    name: box.phar
                     path: .
 
-            -   name: Upload php-scoper.phar
+            -   name: Upload box.phar
                 uses: actions/upload-release-asset@v1
                 env:
                     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                 with:
                     upload_url: ${{ github.event.release.upload_url }}
-                    asset_path: php-scoper.phar
-                    asset_name: php-scoper.phar
+                    asset_path: box.phar
+                    asset_name: box.phar
                     asset_content_type: application/zip
