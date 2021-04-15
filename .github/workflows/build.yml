@@ -67,6 +67,10 @@ jobs:
         runs-on: ubuntu-18.04
         name: Coverage
 
+        env:
+            COMPOSER_DISABLE_XDEBUG_WARN: 1
+            BOX_ALLOW_XDEBUG: 1
+
         steps:
             -   uses: actions/checkout@v2
                 with:
@@ -76,9 +80,9 @@ jobs:
                 uses: shivammathur/setup-php@v2
                 with:
                     php-version: 7.4
-                    ini-values: phar.readonly=0
+                    ini-values: phar.readonly=0, xdebug.mode=coverage
                     tools: composer:v2
-                    coverage: pcov
+                    coverage: xdebug
                     extensions: ctype, iconv, xml
 
             -   name: Get composer cache directory
